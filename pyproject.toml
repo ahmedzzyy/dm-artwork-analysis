@@ -1,7 +1,7 @@
 [project]
 name = "dm-artwork-analysis"
 version = "0.1.0"
-description = "Add your description here"
+description = "A data mining project that classifies and clusters MoMA artworks to uncover insights into artistic trends and pattern"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
