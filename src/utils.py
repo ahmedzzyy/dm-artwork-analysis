@@ -50,14 +50,17 @@ def timer(func):
 
 
 def save_fig(fig, name: str, subdir: str = "figures"):
-    """Save a matplotlib figure to outputs/<subdir>/<name>.png"""
-    import matplotlib.pyplot as plt
+    """
+    Save a matplotlib figure to outputs/<subdir>/<n>.png.
 
+    Does NOT close the figure — the caller decides when to close it.
+    In notebooks: the figure stays alive so %matplotlib inline can render it.
+    In scripts:   call plt.close(fig) after save_fig() to free memory.
+    """
     out = OUTPUTS_DIR / subdir
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"{name}.png"
     fig.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
     print(f"  saved → {path}")
     return path
 

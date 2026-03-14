@@ -436,5 +436,9 @@ def run_clustering(clust_df: pd.DataFrame, df_clean: pd.DataFrame) -> tuple[dict
         "tsne": {"embedding": X_tsne, "indices": tsne_idx},
     }
 
-    print(f"\n✓ Clustering done — {len(plots)} plots saved.")
+    import matplotlib.pyplot as plt
+
+    for fig in plots.values():
+        plt.close(fig)
+    print(f"\n\u2713 Clustering done \u2014 {len(plots)} plots saved.")
     return results, plots

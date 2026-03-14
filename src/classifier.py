@@ -144,6 +144,7 @@ def evaluate(model, X_test, y_test, class_names: list, label: str) -> dict:
     ax.set_title(f"Confusion Matrix — {label}", fontweight="bold")
     fig.tight_layout()
     save_fig(fig, f"confusion_{label.lower().replace(' ', '_')}", subdir="figures")
+    plt.close(fig)
 
     return {
         "label": label,
@@ -259,8 +260,10 @@ def run_classification(clf_df: pd.DataFrame, meta: dict) -> tuple[dict, list]:
     ]
 
     # ── Plots ────────────────────────────────────────────────────────────
-    plot_model_comparison(all_results)
-    plot_feature_importances(rf, feat_cols)
+    import matplotlib.pyplot as plt
+
+    plt.close(plot_model_comparison(all_results))
+    plt.close(plot_feature_importances(rf, feat_cols))
 
     # ── Save best model ──────────────────────────────────────────────────
     best = max(all_results, key=lambda r: r["accuracy"])

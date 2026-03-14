@@ -297,9 +297,13 @@ def all_eda(df: pd.DataFrame, feature_df: pd.DataFrame = None):
     if feature_df is not None:
         plots.append(("correlation", lambda: correlation_matrix(feature_df)))
 
+    import matplotlib.pyplot as plt
+
     for name, fn in plots:
         print(f"  plotting {name}...")
-        figs[name] = fn()
+        fig = fn()
+        figs[name] = fig
+        plt.close(fig)  # free memory in script mode; notebooks never call all_eda()
 
     print(f"\n✓ {len(figs)} plots saved to outputs/eda/")
     return figs
