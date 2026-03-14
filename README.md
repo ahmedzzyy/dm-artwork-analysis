@@ -1,12 +1,16 @@
 # DM Project
 
-A Data Mining project to classify artworks and discover hidden patterns using
-clustering techniques, based on the
-[MoMA artwork dataset](https://github.com/MuseumofModernArt/collection).
+> Discovering artistic movements through machine learning on the Museum of Modern Art collection.
+
+**Ahmed Sahigara | MIT Manipal**
 
 ## Table of Contents
 
-- [ ] add after project setup completes and README is updated to add a TOC
+1. [Features](#features)
+2. [Setup (uv)](#setup-uv)
+3. [Notebooks](#notebooks)
+4. [Project Structure](#project-structure)
+5. [Dataset](#dataset)
 
 ## Features
 
@@ -31,30 +35,74 @@ clustering techniques, based on the
 
 ---
 
+## Setup (uv)
+
+1. To install uv, visit [Installation | uv - Astral Software](https://docs.astral.sh/uv/getting-started/installation/)
+
+```bash
+# 2. Create env and install deps
+uv sync
+```
+
+3. Get the data
+
+- Download from: https://github.com/MuseumofModernArt/collection
+- Place Artworks.csv and Artists.csv in the data/ folder
+
+```bash
+# 4. Run the full pipeline
+uv run python main.py
+
+# Or just EDA (faster sanity check)
+uv run python main.py --eda-only
+
+# Skip the slow SVM if you're in a hurry
+uv run python main.py --skip-svm
+```
+
+---
+
+## Notebooks
+
+```bash
+uv run jupyter notebook notebooks/
+```
+
+- `midterm_progress.ipynb` — EDA + baseline model (Phase 1)
+- `final_showcase.ipynb` — Full pipeline with all models (Phase 2)
+
+---
+
+## Project Structure
+
+```txt
+├── main.py                    ← run everything from here
+├── pyproject.toml             ← uv dependency management
+├── src /
+│   ├── config.py              ← all paths and hyperparameters
+│   ├── data_loader.py         ← load, merge, clean CSVs
+│   ├── features.py            ← feature engineering
+│   ├── eda.py                 ← exploratory plots
+│   ├── classifier.py          ← LR + RF + SVM
+│   ├── clusterer.py           ← KMeans + DBSCAN + t-SNE
+│   ├── visualizer.py          ← shared plot utilities
+│   └── utils.py               ← save/load, timer decorator
+├── notebooks/
+│   ├── midterm_progress.ipynb
+│   └── final_showcase.ipynb
+├── data/                      ← put Artworks.csv + Artists.csv here
+└── outputs/
+    ├── figures/               ← classification + clustering plots
+    ├── eda/                   ← exploratory plots
+    └── models/                ← saved .pkl models
+```
+
+---
+
 ## Dataset
 
-- [ ] To be added
+Museum of Modern Art (MoMA) Collection:
 
----
-
-## Setup & Installation
-
-- [ ] To be added
-
----
-
-## Usage
-
-- [ ] To be added
-
----
-
-> [!TIP]
-> For when I edit this again, remember to add `uv`
-
-> [!WARNING]
-> Ensure the project has src folder for py code and another folder which show
-> cases the python notebook with md and py cells for lab presentation
-
-> [!TIP]
-> Remember to `uv pip install . -e` maybe
+- https://github.com/MuseumofModernArt/collection
+- `Artworks.csv` (~160K rows) and `Artists.csv` (~15K rows)
+- Publicly available for non-commercial research use
