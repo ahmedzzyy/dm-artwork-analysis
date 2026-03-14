@@ -4,4 +4,16 @@ version = "0.1.0"
 description = "A data mining project that classifies and clusters MoMA artworks to uncover insights into artistic trends and pattern"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "ipykernel>=6.29",
+    "joblib>=1.3",
+    "jupyter>=1.0",
+    "matplotlib>=3.8",
+    "nbformat>=5.9",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "plotly>=5.20",
+    "scikit-learn>=1.4",
+    "seaborn>=0.13",
+    "tqdm>=4.66",
+]
