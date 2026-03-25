@@ -133,11 +133,21 @@ def extract_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict
     )
     print(f"  target classes : {le.classes_.tolist()}")
 
+    # Nationality frequency map — needed by the Streamlit predictor
+    # to encode nationality strings at inference time
+    nat_col = df.get(
+        "ArtistNationality",
+        df.get("Nationality", pd.Series(["Unknown"] * len(df), index=df.index)),
+    )
+    nat_col = nat_col.fillna("Unknown")
+    nat_freq = nat_col.value_counts(normalize=True).to_dict()
+
     meta = {
         "label_encoder": le,
         "tfidf_vectorizer": vec,
         "feature_names": list(feature_df.columns),
         "class_names": list(le.classes_),
+        "nationality_freq": nat_freq,
     }
     return clf_df, clust_df, meta
 

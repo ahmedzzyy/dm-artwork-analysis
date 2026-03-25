@@ -47,11 +47,18 @@ def feature_matrix_sample(clf_df: pd.DataFrame, n: int = 500) -> plt.Figure:
     Great for showing 'what the model actually sees'.
     Clips extreme values for readability.
     """
+    # Drop target and any non-numeric columns — seaborn heatmap requires float data
     non_target = [c for c in clf_df.columns if c != "target"]
-    sample = clf_df[non_target].sample(min(n, len(clf_df)), random_state=42)
-    sample_clipped = sample.clip(
-        lower=sample.quantile(0.01), upper=sample.quantile(0.99), axis=1
-    )
+    numeric_only = clf_df[non_target].select_dtypes(include="number")
+
+    sample = numeric_only.sample(min(n, len(numeric_only)), random_state=42)
+
+    # clip() with quantile() can itself return object dtype if a column has
+    # all-identical values (quantile 0.01 == quantile 0.99 == the one value).
+    # Cast to float64 explicitly before handing to seaborn.
+    q_low = sample.quantile(0.01)
+    q_high = sample.quantile(0.99)
+    sample_clipped = sample.clip(lower=q_low, upper=q_high, axis=1).astype("float64")
 
     fig, ax = plt.subplots(figsize=(14, 6))
     sns.heatmap(
@@ -63,9 +70,11 @@ def feature_matrix_sample(clf_df: pd.DataFrame, n: int = 500) -> plt.Figure:
         yticklabels=False,
         cbar_kws={"shrink": 0.5},
     )
-    ax.set_xlabel(f"{n} sample artworks →")
-    ax.set_ylabel("Features →")
-    ax.set_title("Feature Matrix Sample (clipped)", fontweight="bold")
+    ax.set_xlabel(f"{len(sample)} sample artworks →")
+    ax.set_ylabel(f"{len(sample_clipped.columns)} features →")
+    ax.set_title(
+        "Feature Matrix Sample (clipped to 1st–99th percentile)", fontweight="bold"
+    )
     fig.tight_layout()
     save_fig(fig, "feature_matrix_sample", subdir="figures")
     return fig

@@ -273,4 +273,12 @@ def run_classification(clf_df: pd.DataFrame, meta: dict) -> tuple[dict, list]:
     )
     save_model(scaler, "feature_scaler")
 
+    # Save meta separately so the Streamlit predictor can load it standalone
+    # Add nationality frequency map so the app can encode user input
+    import joblib
+    from src.config import MODELS_DIR
+
+    joblib.dump(meta, MODELS_DIR / "feature_meta.pkl")
+    print(f"  saved → {MODELS_DIR / 'feature_meta.pkl'}")
+
     return best, all_results
