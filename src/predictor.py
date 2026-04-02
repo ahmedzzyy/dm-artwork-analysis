@@ -226,3 +226,96 @@ def get_predictor() -> MoMAPredictor:
     if _predictor_instance is None:
         _predictor_instance = MoMAPredictor().load()
     return _predictor_instance
+
+
+# ── Cluster prediction ─────────────────────────────────────────────────────
+
+
+class ClusterLocator:
+    """
+    Given a raw feature vector (same one the classifier uses),
+    project it into the 2D PCA space and assign it to a KMeans cluster.
+    Also returns the full 2D scatter data for plotting.
+    """
+
+    def __init__(self):
+        self._loaded = False
+
+    def load(self):
+        if self._loaded:
+            return self
+
+        needed = [
+            "cluster_scaler.pkl",
+            "pca_2d_transformer.pkl",
+            "pca_2d_coords.pkl",
+            "kmeans_labels.pkl",
+        ]
+        missing = [n for n in needed if not (MODELS_DIR / n).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"Clustering artefacts not found: {missing}\n"
+                "Re-run  uv run python main.py  to regenerate them."
+            )
+
+        import joblib
+
+        self.cluster_scaler = joblib.load(MODELS_DIR / "cluster_scaler.pkl")
+        self.pca_transformer = joblib.load(MODELS_DIR / "pca_2d_transformer.pkl")
+        self.pca_2d_coords = joblib.load(MODELS_DIR / "pca_2d_coords.pkl")
+        self.kmeans_labels = joblib.load(MODELS_DIR / "kmeans_labels.pkl")
+
+        # Also load the KMeans model to assign new points
+        km_candidates = list(MODELS_DIR.glob("kmeans_k*.pkl"))
+        if not km_candidates:
+            raise FileNotFoundError("No kmeans_k*.pkl found in models/")
+        self.kmeans_model = joblib.load(km_candidates[0])
+
+        self._loaded = True
+        return self
+
+    def locate(self, feature_vector: np.ndarray) -> dict:
+        """
+        Project a raw feature vector (pre-scaling, same as classifier input)
+        into the 2D PCA space and find its cluster.
+
+        Returns
+        -------
+        cluster_id   : int   which cluster this point belongs to
+        point_2d     : (x, y) coordinates in PCA space
+        all_coords   : np.ndarray shape (N, 2) — full training scatter
+        all_labels   : np.ndarray shape (N,)   — cluster label per point
+        """
+        # The cluster scaler was fit on the *clustering* feature matrix
+        # (same features, same order — no target column).
+        # We drop the last entry if the vector includes the target.
+        fv = feature_vector.reshape(1, -1)
+
+        # Project through the same scaler + PCA used during training
+        fv_scaled = self.cluster_scaler.transform(fv)
+        point_2d = self.pca_transformer.transform(fv_scaled)[0]
+
+        # Assign cluster using the 50D KMeans model
+        # We only have 2D here so use nearest centroid in 2D instead
+        centroids_2d = self.pca_transformer.transform(
+            self.cluster_scaler.transform(self.kmeans_model.cluster_centers_)
+        )
+        dists = np.linalg.norm(centroids_2d - point_2d, axis=1)
+        cluster_id = int(np.argmin(dists))
+
+        return {
+            "cluster_id": cluster_id,
+            "point_2d": point_2d,
+            "all_coords": self.pca_2d_coords,
+            "all_labels": self.kmeans_labels,
+        }
+
+
+_locator_instance = None
+
+
+def get_locator() -> ClusterLocator:
+    global _locator_instance
+    if _locator_instance is None:
+        _locator_instance = ClusterLocator().load()
+    return _locator_instance

@@ -424,6 +424,26 @@ def run_clustering(clust_df: pd.DataFrame, df_clean: pd.DataFrame) -> tuple[dict
         X_tsne, km_labels_sub, title=f"t-SNE — KMeans k={best_k}"
     )
 
+    # ── Save clustering artefacts for the Streamlit app ────────────────
+    # The app needs: 2D coords, cluster labels, and the PCA transformer
+    # so it can project a new user-input point into the same 2D space.
+    import joblib
+    from src.config import MODELS_DIR
+
+    joblib.dump(X_2d, MODELS_DIR / "pca_2d_coords.pkl")
+    joblib.dump(km_labels, MODELS_DIR / "kmeans_labels.pkl")
+    # pca2d object is local — re-fit a fresh one and save it
+    from sklearn.decomposition import PCA as _PCA
+    from sklearn.preprocessing import StandardScaler as _SS
+
+    _scaler_save = _SS().fit(clust_df.values)
+    _pca_save = _PCA(n_components=2, random_state=42).fit(
+        _scaler_save.transform(clust_df.values)
+    )
+    joblib.dump(_scaler_save, MODELS_DIR / "cluster_scaler.pkl")
+    joblib.dump(_pca_save, MODELS_DIR / "pca_2d_transformer.pkl")
+    print("  saved → pca_2d_coords.pkl, kmeans_labels.pkl, pca_2d_transformer.pkl")
+
     results = {
         "kmeans": {
             "labels": km_labels,
