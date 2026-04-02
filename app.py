@@ -2,23 +2,22 @@
 app.py — MoMA Art Mining · Streamlit Application
 
 Two modes:
-  🎨  Artwork Predictor  — type in artwork details, get a live department prediction
-  📊  Project Findings   — guided presentation of all results and insights
+  🎨  Artwork Predictor  — live department prediction from artwork details
+  📊  Project Findings   — guided presentation of all results
 
-Run with:
+Run:
     uv run streamlit run app.py
 """
 
 import sys
 from pathlib import Path
 
-# Make src/ importable
 sys.path.insert(0, str(Path(__file__).parent))
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from PIL import Image
 
 from src.config import OUTPUTS_DIR, MODELS_DIR
 from src.predictor import TOP_NATIONALITIES
@@ -31,126 +30,31 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS ─────────────────────────────────────────────────────────────
+# Minimal CSS — only things Streamlit's theme system genuinely can't do:
+# 1. Hide the default top bar chrome
+# 2. Slightly round the prediction result card
 st.markdown(
     """
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
-
-  html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-  }
-
-  /* Sidebar */
-  [data-testid="stSidebar"] {
-    background: #0f0f0f;
-    border-right: 1px solid #222;
-  }
-  [data-testid="stSidebar"] * { color: #e8e8e8 !important; }
-  [data-testid="stSidebar"] .stRadio label {
-    font-size: 15px;
-    padding: 6px 0;
-    letter-spacing: 0.01em;
-  }
-
-  /* Main bg */
-  .stApp { background: #fafaf8; }
-
-  /* Hero title */
-  .hero-title {
-    font-family: 'DM Serif Display', serif;
-    font-size: 3rem;
-    font-weight: 400;
-    color: #0f0f0f;
-    line-height: 1.1;
-    margin-bottom: 0.2rem;
-  }
-  .hero-sub {
-    font-size: 1rem;
-    color: #666;
-    font-weight: 300;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    margin-bottom: 2rem;
-  }
-
-  /* Prediction card */
+  #MainMenu, footer, header { visibility: hidden; }
   .pred-card {
-    background: #0f0f0f;
+    background-color: #1a1a1a;
     color: #fafaf8;
-    border-radius: 16px;
-    padding: 2rem 2.5rem;
+    border-radius: 14px;
+    padding: 1.6rem 2rem;
+    margin-bottom: 1rem;
+  }
+  .pred-dept  { font-size: 1.9rem; font-weight: 600; color: #c8a951; margin-bottom: 0.2rem; }
+  .pred-label { font-size: 0.8rem; color: #aaa; letter-spacing: 0.08em; text-transform: uppercase; }
+  .insight {
+    border-left: 3px solid #c8a951;
+    padding: 0.7rem 1rem;
     margin: 1rem 0;
-  }
-  .pred-dept {
-    font-family: 'DM Serif Display', serif;
-    font-size: 2.2rem;
-    color: #f5c842;
-    margin-bottom: 0.3rem;
-  }
-  .pred-conf {
-    font-size: 0.95rem;
-    color: #aaa;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-
-  /* Finding section headers */
-  .section-pill {
-    display: inline-block;
-    background: #0f0f0f;
-    color: #f5c842;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    padding: 4px 14px;
-    border-radius: 20px;
-    margin-bottom: 0.8rem;
-  }
-
-  /* Metric cards */
-  .metric-row { display: flex; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; }
-  .metric-card {
-    background: white;
-    border: 1px solid #e8e8e0;
-    border-radius: 12px;
-    padding: 1.2rem 1.5rem;
-    flex: 1;
-    min-width: 140px;
-  }
-  .metric-val {
-    font-family: 'DM Serif Display', serif;
-    font-size: 2rem;
-    color: #0f0f0f;
-    line-height: 1;
-  }
-  .metric-label {
-    font-size: 0.8rem;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-top: 4px;
-  }
-
-  /* Insight box */
-  .insight-box {
-    background: #fffbea;
-    border-left: 4px solid #f5c842;
-    padding: 1rem 1.4rem;
+    background: #f7f4e8;
     border-radius: 0 8px 8px 0;
-    margin: 1rem 0;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     color: #333;
   }
-
-  /* Divider */
-  .divider { border: none; border-top: 1px solid #e8e8e0; margin: 2rem 0; }
-
-  /* Hide streamlit branding */
-  #MainMenu { visibility: hidden; }
-  footer { visibility: hidden; }
-  header { visibility: hidden; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -160,598 +64,528 @@ st.markdown(
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-def load_image(name: str, subdir: str = "figures") -> Image.Image | None:
-    path = OUTPUTS_DIR / subdir / f"{name}.png"
-    if path.exists():
-        return Image.open(path)
-    return None
+def load_img(name: str, subdir: str = "figures"):
+    from PIL import Image
+
+    p = OUTPUTS_DIR / subdir / f"{name}.png"
+    return Image.open(p) if p.exists() else None
 
 
-def img_or_warn(name: str, subdir: str = "figures", caption: str = ""):
-    img = load_image(name, subdir)
+def show_img(name: str, subdir: str = "figures", caption: str = ""):
+    img = load_img(name, subdir)
     if img:
         st.image(img, caption=caption, use_container_width=True)
     else:
-        st.info(f"📂 Run `main.py` first to generate **{name}.png**")
+        st.info(f"Run `main.py` first to generate **{name}.png**", icon="📂")
 
 
 def insight(text: str):
-    st.markdown(f'<div class="insight-box">💡 {text}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="insight">💡 {text}</div>', unsafe_allow_html=True)
 
 
-def pill(text: str):
-    st.markdown(f'<div class="section-pill">{text}</div>', unsafe_allow_html=True)
+def metric_row(items: list[tuple[str, str, str]]):
+    """items = [(value, label, delta_str), ...]  delta_str can be empty"""
+    for col, (val, label, delta) in zip(st.columns(len(items)), items):
+        col.metric(label, val, delta or None)
 
 
-def metric_cards(items: list[tuple[str, str]]):
-    """items = [(value, label), ...]"""
-    cols = st.columns(len(items))
-    for col, (val, label) in zip(cols, items):
-        col.markdown(
-            f'<div class="metric-card">'
-            f'<div class="metric-val">{val}</div>'
-            f'<div class="metric-label">{label}</div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+# ── Check models ───────────────────────────────────────────────────────────
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────
-
-with st.sidebar:
-    st.markdown(
-        "<p style=\"font-family:'DM Serif Display',serif;font-size:1.4rem;"
-        'color:#f5c842;margin-bottom:0">MoMA</p>'
-        '<p style="font-size:0.75rem;color:#888;letter-spacing:0.1em;'
-        'text-transform:uppercase;margin-top:0">Art Mining</p>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-    mode = st.radio(
-        "Navigate",
-        ["🎨  Artwork Predictor", "📊  Project Findings"],
-        label_visibility="collapsed",
-    )
-    st.markdown("---")
-    st.markdown(
-        '<p style="font-size:0.75rem;color:#555;line-height:1.6">'
-        "Museum of Modern Art · 160K artworks<br>"
-        "Random Forest · 94.8% accuracy<br>"
-        "KMeans + DBSCAN clustering"
-        "</p>",
-        unsafe_allow_html=True,
-    )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  MODE 1 — ARTWORK PREDICTOR
-# ══════════════════════════════════════════════════════════════════════════════
-
-if mode == "🎨  Artwork Predictor":
-    st.markdown(
-        '<h1 class="hero-title">Artwork Department<br>Predictor</h1>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<p class="hero-sub">Describe an artwork · Get an instant classification</p>',
-        unsafe_allow_html=True,
-    )
-
-    # Check models exist before trying to load
-    models_ready = (
+def models_ready() -> bool:
+    return (
         bool(list(MODELS_DIR.glob("best_classifier_*.pkl")))
         and (MODELS_DIR / "feature_scaler.pkl").exists()
         and (MODELS_DIR / "feature_meta.pkl").exists()
     )
 
-    if not models_ready:
+
+# ── Load predictor once (Streamlit caches across reruns) ──────────────────
+
+
+@st.cache_resource
+def load_predictor():
+    from src.predictor import get_predictor
+
+    return get_predictor()
+
+
+# ── Sidebar ────────────────────────────────────────────────────────────────
+
+with st.sidebar:
+    st.title("MoMA Art Mining")
+    st.caption("MIT Manipal · Data Mining Project")
+    st.divider()
+    mode = st.radio(
+        "Mode",
+        ["🎨  Artwork Predictor", "📊  Project Findings"],
+        label_visibility="collapsed",
+    )
+    st.divider()
+    st.caption("160,238 artworks · 7 departments · Random Forest 94.8%")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  MODE 1 — PREDICTOR
+# ══════════════════════════════════════════════════════════════════════════
+
+if mode == "🎨  Artwork Predictor":
+    st.title("Artwork Department Predictor")
+    st.caption(
+        "Describe an artwork and the model predicts which MoMA department it belongs to."
+    )
+    st.divider()
+
+    if not models_ready():
         st.error(
-            "**Models not found.** Run the training pipeline first:\n\n"
-            "```\nuv run python main.py\n```\n\n"
-            "This trains all models and saves them to `outputs/models/`."
+            "**Models not found.** Train first:\n```\nuv run python main.py\n```",
+            icon="🚨",
         )
         st.stop()
 
-    # Load predictor (cached after first load)
-    @st.cache_resource
-    def load_predictor():
-        from src.predictor import get_predictor
-
-        return get_predictor()
-
     predictor = load_predictor()
 
-    # ── Input form ──────────────────────────────────────────────────────────
-    col_form, col_result = st.columns([1, 1], gap="large")
+    # ── Layout: form left, results right ──────────────────────────────────
+    form_col, result_col = st.columns([1, 1], gap="large")
 
-    with col_form:
-        st.markdown("#### Artwork Details")
+    with form_col:
+        st.subheader("Artwork Details")
 
         medium = st.text_input(
-            "Medium",
+            "Medium *",
             value="Oil on canvas",
-            placeholder="e.g. Gelatin silver print, Lithograph, Oil on canvas",
-            help="The material / technique of the artwork. This is the strongest predictor.",
+            help="The material / technique — this is the strongest predictor by far.",
         )
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            creation_year = st.number_input(
-                "Creation Year", min_value=1800, max_value=2024, value=1965
-            )
-        with col_b:
-            acquisition_year = st.number_input(
-                "Acquisition Year", min_value=1800, max_value=2024, value=1975
-            )
+        c1, c2 = st.columns(2)
+        creation_year = c1.number_input("Creation year", 1800, 2024, 1965)
+        acquisition_year = c2.number_input("Acquisition year", 1800, 2024, 1975)
 
-        nationality = st.selectbox("Artist Nationality", TOP_NATIONALITIES, index=0)
+        nationality = st.selectbox("Artist nationality", TOP_NATIONALITIES)
         is_female = st.checkbox("Artist is female")
 
-        st.markdown("#### Dimensions *(optional)*")
-        col_h, col_w = st.columns(2)
-        with col_h:
-            height_cm = st.number_input(
-                "Height (cm)", min_value=0.0, value=0.0, step=1.0
-            )
-        with col_w:
-            width_cm = st.number_input("Width (cm)", min_value=0.0, value=0.0, step=1.0)
+        with st.expander("Dimensions (optional)"):
+            dc1, dc2 = st.columns(2)
+            height_cm = dc1.number_input("Height (cm)", 0.0, 10000.0, 0.0)
+            width_cm = dc2.number_input("Width (cm)", 0.0, 10000.0, 0.0)
 
-        predict_btn = st.button(
-            "Predict Department →", type="primary", use_container_width=True
-        )
+        predict_btn = st.button("Predict →", type="primary", use_container_width=True)
 
-    # ── Result panel ────────────────────────────────────────────────────────
-    with col_result:
-        if predict_btn or True:  # show placeholder until first click
-            if predict_btn:
+    # ── Quick-pick examples ────────────────────────────────────────────────
+    with form_col:
+        st.caption("Quick examples:")
+        ex_cols = st.columns(4)
+        examples = [
+            ("📸 Photo", "Gelatin silver print", "American", 1975, 1980),
+            ("🖼️ Paint", "Oil on canvas", "French", 1923, 1940),
+            ("📐 Arch", "Graphite on paper", "Swiss", 1968, 1972),
+            ("🎬 Film", "16mm film, color, sound", "Japanese", 1982, 1990),
+        ]
+        for col, (label, med, nat, cy, ay) in zip(ex_cols, examples):
+            if col.button(label, use_container_width=True):
                 with st.spinner("Classifying..."):
-                    result = predictor.predict(
-                        medium=medium,
-                        nationality=nationality,
-                        creation_year=int(creation_year),
-                        acquisition_year=int(acquisition_year),
-                        is_female=is_female,
-                        height_cm=float(height_cm),
-                        width_cm=float(width_cm),
+                    r = predictor.predict(
+                        medium=med,
+                        nationality=nat,
+                        creation_year=cy,
+                        acquisition_year=ay,
                     )
-                st.session_state["last_result"] = result
+                st.session_state["last_result"] = r
+                st.rerun()
 
-            if "last_result" in st.session_state:
-                result = st.session_state["last_result"]
-                dept = result["predicted_class"]
-                conf = result["confidence"]
+    # ── Run prediction ─────────────────────────────────────────────────────
+    if predict_btn:
+        with st.spinner("Classifying..."):
+            result = predictor.predict(
+                medium=medium,
+                nationality=nationality,
+                creation_year=int(creation_year),
+                acquisition_year=int(acquisition_year),
+                is_female=is_female,
+                height_cm=float(height_cm),
+                width_cm=float(width_cm),
+            )
+        st.session_state["last_result"] = result
 
-                # Prediction card
-                st.markdown(
-                    f'<div class="pred-card">'
-                    f'<div class="pred-conf">Predicted Department</div>'
-                    f'<div class="pred-dept">{dept}</div>'
-                    f'<div class="pred-conf">{conf:.1%} confidence</div>'
-                    f"</div>",
-                    unsafe_allow_html=True,
+    # ── Result display ─────────────────────────────────────────────────────
+    with result_col:
+        if "last_result" not in st.session_state:
+            st.info("Fill in the form and click **Predict →**", icon="👈")
+        else:
+            res = st.session_state["last_result"]
+            dept = res["predicted_class"]
+            conf = res["confidence"]
+
+            st.markdown(
+                f'<div class="pred-card">'
+                f'<div class="pred-label">Predicted Department</div>'
+                f'<div class="pred-dept">{dept}</div>'
+                f'<div class="pred-label">Confidence &nbsp;·&nbsp; {conf:.1%}</div>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            # All-departments probability chart
+            st.caption("Probability across all departments")
+            probs = dict(sorted(res["probabilities"].items(), key=lambda x: x[1]))
+            colors = ["#c8a951" if k == dept else "#d0cfc8" for k in probs]
+            fig = go.Figure(
+                go.Bar(
+                    x=list(probs.values()),
+                    y=list(probs.keys()),
+                    orientation="h",
+                    marker_color=colors,
+                    text=[f"{v:.1%}" for v in probs.values()],
+                    textposition="outside",
                 )
+            )
+            fig.update_layout(
+                height=260,
+                margin=dict(l=0, r=55, t=4, b=4),
+                xaxis=dict(
+                    range=[0, 1.05],
+                    showticklabels=False,
+                    showgrid=False,
+                    zeroline=False,
+                ),
+                yaxis=dict(showgrid=False),
+                plot_bgcolor="#fafaf8",
+                paper_bgcolor="#fafaf8",
+                font=dict(size=12),
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-                # Probability bar chart
-                st.markdown("#### All Department Probabilities")
-                probs = result["probabilities"]
-                sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
-                labels = [p[0] for p in sorted_probs]
-                values = [p[1] for p in sorted_probs]
-                colors = ["#f5c842" if l == dept else "#e0e0d8" for l in labels]
-
-                fig = go.Figure(
-                    go.Bar(
-                        x=values,
-                        y=labels,
-                        orientation="h",
-                        marker_color=colors,
-                        text=[f"{v:.1%}" for v in values],
-                        textposition="outside",
-                    )
+            # Top driving features
+            st.caption("Features that drove this prediction")
+            feats = res["top_features"][:8]
+            f_names = [f[0].replace("med_", "medium: ") for f in feats]
+            f_vals = [f[1] for f in feats]
+            fig2 = go.Figure(
+                go.Bar(
+                    x=f_vals,
+                    y=f_names,
+                    orientation="h",
+                    marker_color="#1a1a1a",
                 )
-                fig.update_layout(
-                    height=300,
-                    margin=dict(l=0, r=60, t=10, b=10),
-                    xaxis=dict(range=[0, 1], showticklabels=False, showgrid=False),
-                    yaxis=dict(showgrid=False),
-                    plot_bgcolor="#fafaf8",
-                    paper_bgcolor="#fafaf8",
-                    font=dict(family="DM Sans", size=13),
-                    showlegend=False,
-                )
-                fig.update_yaxes(autorange="reversed")
-                st.plotly_chart(fig, use_container_width=True)
-
-                # Top features driving this prediction
-                st.markdown("#### What drove this prediction")
-                top_features = result["top_features"][:8]
-                feat_names = [f[0].replace("med_", "medium: ") for f in top_features]
-                feat_vals = [f[1] for f in top_features]
-
-                fig2 = go.Figure(
-                    go.Bar(
-                        x=feat_vals,
-                        y=feat_names,
-                        orientation="h",
-                        marker_color="#0f0f0f",
-                    )
-                )
-                fig2.update_layout(
-                    height=260,
-                    margin=dict(l=0, r=20, t=10, b=10),
-                    xaxis=dict(showticklabels=False, showgrid=False),
-                    yaxis=dict(showgrid=False),
-                    plot_bgcolor="#fafaf8",
-                    paper_bgcolor="#fafaf8",
-                    font=dict(family="DM Sans", size=12),
-                )
-                fig2.update_yaxes(autorange="reversed")
-                st.plotly_chart(fig2, use_container_width=True)
-
-            else:
-                st.markdown(
-                    '<div style="height:300px;display:flex;align-items:center;'
-                    "justify-content:center;color:#aaa;font-size:1rem;"
-                    'border:1px dashed #ddd;border-radius:12px">'
-                    "Fill in the form and click Predict →"
-                    "</div>",
-                    unsafe_allow_html=True,
-                )
-
-    # ── Example presets ─────────────────────────────────────────────────────
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown("#### Try these examples")
-    ex_col1, ex_col2, ex_col3, ex_col4 = st.columns(4)
-
-    examples = [
-        ("📸 Photograph", "Gelatin silver print", "American", 1975, 1980),
-        ("🖼️ Painting", "Oil on canvas", "French", 1923, 1940),
-        ("📐 Architecture", "Graphite on paper", "Swiss", 1968, 1972),
-        ("🎬 Film", "16mm film, color, sound", "Japanese", 1982, 1990),
-    ]
-    for col, (label, med, nat, cy, ay) in zip(
-        [ex_col1, ex_col2, ex_col3, ex_col4], examples
-    ):
-        if col.button(label, use_container_width=True):
-            with st.spinner("Classifying..."):
-                from src.predictor import get_predictor
-
-                p = get_predictor()
-                r = p.predict(
-                    medium=med, nationality=nat, creation_year=cy, acquisition_year=ay
-                )
-            st.session_state["last_result"] = r
-            st.rerun()
+            )
+            fig2.update_layout(
+                height=240,
+                margin=dict(l=0, r=10, t=4, b=4),
+                xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                yaxis=dict(showgrid=False),
+                plot_bgcolor="#fafaf8",
+                paper_bgcolor="#fafaf8",
+                font=dict(size=12),
+            )
+            fig2.update_yaxes(autorange="reversed")
+            st.plotly_chart(fig2, use_container_width=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  MODE 2 — PROJECT FINDINGS
-# ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
+#  MODE 2 — FINDINGS
+# ══════════════════════════════════════════════════════════════════════════
 
 else:
-    st.markdown('<h1 class="hero-title">Project Findings</h1>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="hero-sub">Discovering artistic movements through machine learning</p>',
-        unsafe_allow_html=True,
+    st.title("Project Findings")
+    st.caption(
+        "Discovering artistic movements through machine learning · MoMA Collection"
     )
+    st.divider()
 
-    # ── Summary metrics ──────────────────────────────────────────────────────
-    metric_cards(
+    metric_row(
         [
-            ("160K", "Artworks analysed"),
-            ("7", "Departments classified"),
-            ("94.8%", "Best model accuracy"),
-            ("110", "Features engineered"),
-            ("3", "ML techniques applied"),
+            ("160,238", "Artworks analysed", ""),
+            ("7", "Departments", ""),
+            ("94.8%", "Best accuracy", "Random Forest"),
+            ("110", "Features", "10 structured + 100 TF-IDF"),
+            ("3", "DM techniques", "Classification · Clustering · Dim. reduction"),
         ]
     )
 
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.divider()
 
-    # Navigation tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         ["📁 Dataset", "🔍 EDA", "🤖 Classification", "🔵 Clustering", "📌 Conclusions"]
     )
 
-    # ── Tab 1: Dataset ────────────────────────────────────────────────────────
+    # ── Dataset ────────────────────────────────────────────────────────────
     with tab1:
-        pill("Dataset Overview")
-        st.markdown("### Museum of Modern Art — MoMA Collection")
+        st.subheader("Museum of Modern Art — Collection Dataset")
         st.markdown(
-            "The dataset is publicly released by MoMA for research. "
-            "It contains every artwork in their permanent collection with rich metadata."
+            "Publicly released by MoMA for research. "
+            "Two CSVs merged on `ConstituentID`."
         )
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**Artworks CSV**")
-            st.markdown("""
-- 160,269 artworks
-- Title, Medium, Dimensions, Date, Department
-- Date Acquired, URL, ConstituentID
-            """)
-        with col2:
-            st.markdown("**Artists CSV**")
-            st.markdown("""
-- 15,807 artists
-- Name, Nationality, Gender
-- Birth year, Death year
-- Linked via ConstituentID
-            """)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Artworks.csv** — 160,269 rows")
+            st.markdown(
+                "Title · Medium · Dimensions · Date · Department · DateAcquired"
+            )
+        with c2:
+            st.markdown("**Artists.csv** — 15,807 rows")
+            st.markdown("Name · Nationality · Gender · Birth year · Death year")
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        pill("After Cleaning")
-        col3, col4, col5 = st.columns(3)
-        col3.metric("Rows retained", "160,238", "99.98% kept")
-        col4.metric("Departments", "7", "after min-sample filter")
-        col5.metric("Features built", "110", "10 structured + 100 TF-IDF")
-
+        st.divider()
+        st.subheader("After cleaning")
+        metric_row(
+            [
+                ("160,238", "Rows retained", "99.98% kept"),
+                ("7", "Departments", "after min-sample filter"),
+                ("110", "Features", "10 structured + 100 TF-IDF"),
+            ]
+        )
         insight(
-            "The Medium column — e.g. 'Gelatin silver print', 'Oil on canvas' — "
-            "turned out to be the most information-dense field in the entire dataset. "
-            "TF-IDF on this column alone accounts for ~90 of our 110 features."
+            "The Medium column — 'Gelatin silver print', 'Oil on canvas' — "
+            "is the most information-dense field. TF-IDF on this single column "
+            "accounts for 90 of our 110 features and drives most of the model's accuracy."
         )
-
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        pill("Class Distribution")
-        img_or_warn("department_distribution", subdir="eda")
+        st.divider()
+        st.subheader("Class distribution")
+        show_img("department_distribution", subdir="eda")
         insight(
-            "The dataset is heavily imbalanced — Drawings & Prints alone is 51% of all artworks. "
-            "We handled this with stratified train/test splitting to ensure every class "
-            "is proportionally represented in both sets."
+            "Drawings & Prints is 51% of all artworks — heavy class imbalance. "
+            "Handled with stratified splitting so every class is proportionally "
+            "represented in both train and test sets."
         )
 
-    # ── Tab 2: EDA ────────────────────────────────────────────────────────────
+    # ── EDA ────────────────────────────────────────────────────────────────
     with tab2:
-        pill("Exploratory Data Analysis")
-        st.markdown("### What the data tells us before any modelling")
+        st.subheader("Exploratory Data Analysis")
+        st.markdown("Understanding the data before any modelling.")
 
-        col1, col2 = st.columns(2)
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             st.markdown("**Creation decade timeline**")
-            img_or_warn("timeline_by_decade", subdir="eda")
+            show_img("timeline_by_decade", subdir="eda")
             insight(
-                "Most artworks were created post-1950, reflecting MoMA's modern/contemporary focus."
+                "Most artworks post-1950 — reflects MoMA's modern/contemporary mandate."
             )
-        with col2:
-            st.markdown("**Acquisition activity over time**")
-            img_or_warn("acquisition_trend", subdir="eda")
+        with c2:
+            st.markdown("**Acquisition activity**")
+            show_img("acquisition_trend", subdir="eda")
             insight(
-                "Acquisition spikes in the 1960s and 2000s correspond to major collection drives."
+                "Spikes in the 1960s and 2000s correspond to major collection drives."
             )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-        col3, col4 = st.columns(2)
-        with col3:
-            st.markdown("**Artist nationalities**")
-            img_or_warn("nationality_chart", subdir="eda")
-        with col4:
-            st.markdown("**Artist gender distribution**")
-            img_or_warn("gender_split", subdir="eda")
+        st.divider()
+        c3, c4 = st.columns(2)
+        with c3:
+            st.markdown("**Artist nationalities (top 20)**")
+            show_img("nationality_chart", subdir="eda")
+        with c4:
+            st.markdown("**Artist gender split**")
+            show_img("gender_split", subdir="eda")
 
         insight(
-            "~85% of represented artists are male. This demographic skew is a known "
-            "bias in major Western museum collections — not a data quality issue, "
-            "but a cultural one. Our model will reflect this distribution."
+            "~85% of represented artists are male — a known bias in major Western collections. "
+            "Our model reflects this distribution; it is not a data quality problem, it is a cultural one."
         )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.divider()
         st.markdown("**Department × Creation Decade heatmap**")
-        img_or_warn("dept_by_decade_heatmap", subdir="eda")
+        show_img("dept_by_decade_heatmap", subdir="eda")
         insight(
-            "Photography barely exists before 1950 then explodes — confirming that "
-            "creation decade is a genuinely useful feature for classification. "
-            "Different departments have distinct temporal signatures."
+            "Photography barely exists before 1950 then explodes. "
+            "Each department has a distinct temporal signature — "
+            "confirming that creation decade will be a genuinely useful feature."
         )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.divider()
         st.markdown("**Top 20 medium terms**")
-        img_or_warn("medium_top20", subdir="eda")
+        show_img("medium_top20", subdir="eda")
         insight(
-            "The most common medium terms — 'print', 'paper', 'gelatin silver' — "
-            "map almost directly to specific departments. This is why TF-IDF on the "
-            "Medium column is so powerful for classification."
+            "'print', 'paper', 'gelatin silver' map almost directly to specific departments. "
+            "This is the intuition behind using TF-IDF on the Medium column."
         )
 
-    # ── Tab 3: Classification ─────────────────────────────────────────────────
+    # ── Classification ─────────────────────────────────────────────────────
     with tab3:
-        pill("Supervised Learning")
-        st.markdown("### Three models, one winner")
+        st.subheader("Classification — Supervised Learning")
         st.markdown(
-            "We trained three classifiers on the same 110-feature matrix "
-            "with an 80/20 stratified train/test split."
+            "Three classifiers trained on the same 110-feature matrix. "
+            "80 / 20 stratified train-test split."
         )
 
-        # Model comparison table
-        model_data = pd.DataFrame(
+        results_df = pd.DataFrame(
             {
-                "Model": ["Logistic Regression", "SVM (RBF)", "Random Forest"],
-                "Accuracy": ["86.0%", "88.3%", "94.8%"],
-                "Macro F1": ["0.68", "0.60", "0.86"],
-                "Training time": ["26s", "56s", "6s"],
+                "Model": ["Logistic Regression", "SVM (RBF kernel)", "Random Forest"],
+                "Test Accuracy": ["86.0%", "88.3%", "**94.8%**"],
+                "Macro F1": ["0.68", "0.60", "**0.86**"],
+                "Train time": ["26s", "56s", "6s"],
                 "Notes": [
-                    "Linear baseline — fast, interpretable",
-                    "Strong on TF-IDF but ignores minority classes entirely",
-                    "Best overall — fast to train, handles imbalance well",
+                    "Linear baseline — fast and interpretable",
+                    "Ignored minority classes entirely (Film, Fluxus → 0% recall)",
+                    "Best on every metric — and fastest to train",
                 ],
             }
         )
-        st.dataframe(model_data, hide_index=True, use_container_width=True)
+        st.dataframe(results_df, hide_index=True, use_container_width=True)
 
         insight(
-            "Random Forest wins on every metric and trains the fastest of the three. "
-            "SVM scored 0.00 F1 on Film and Fluxus — it simply ignored minority classes "
-            "because its 20K subsample didn't see enough of them."
+            "SVM scored 0.00 F1 on Film and Fluxus Collection. "
+            "It was subsampled to 20K for speed — and those classes are so rare "
+            "they barely appeared in the sample. Random Forest trained on the full set "
+            "had no such problem."
         )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
-        with col1:
+        st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
             st.markdown("**Model accuracy comparison**")
-            img_or_warn("model_comparison", subdir="figures")
-        with col2:
-            st.markdown("**Feature importances — Random Forest**")
-            img_or_warn("feature_importances", subdir="figures")
+            show_img("model_comparison")
+        with c2:
+            st.markdown("**Top feature importances — Random Forest**")
+            show_img("feature_importances")
 
         insight(
-            "The top features are almost entirely TF-IDF medium terms — "
-            "'gelatin silver', 'print', 'offset'. The model essentially learned that "
-            "artistic medium is the primary determinant of department, "
-            "which validates the museum's own cataloguing logic."
+            "The top features are almost entirely TF-IDF medium terms. "
+            "The model learned that artistic medium is the primary determinant of department — "
+            "it discovered the museum's own cataloguing logic automatically."
         )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.divider()
         st.markdown("**Confusion matrices**")
-        cf_col1, cf_col2, cf_col3 = st.columns(3)
-        with cf_col1:
-            st.markdown("*Logistic Regression*")
-            img_or_warn("confusion_logistic_regression", subdir="figures")
-        with cf_col2:
-            st.markdown("*Random Forest*")
-            img_or_warn("confusion_random_forest", subdir="figures")
-        with cf_col3:
-            st.markdown("*SVM*")
-            img_or_warn("confusion_svm", subdir="figures")
+        cf1, cf2, cf3 = st.columns(3)
+        with cf1:
+            st.caption("Logistic Regression")
+            show_img("confusion_logistic_regression")
+        with cf2:
+            st.caption("Random Forest")
+            show_img("confusion_random_forest")
+        with cf3:
+            st.caption("SVM")
+            show_img("confusion_svm")
 
         insight(
-            "The RF confusion matrix shows most mistakes happen at the "
-            "Architecture & Design ↔ Drawings & Prints boundary — "
-            "both use paper-based media, so the model genuinely struggles "
-            "where human curators would too."
+            "Most RF mistakes happen at the Architecture & Design ↔ Drawings & Prints boundary. "
+            "Both use paper-based media. The model is uncertain exactly where human curators are uncertain too."
         )
 
-    # ── Tab 4: Clustering ─────────────────────────────────────────────────────
+    # ── Clustering ─────────────────────────────────────────────────────────
     with tab4:
-        pill("Unsupervised Learning")
-        st.markdown("### What groupings does the data suggest — without being told?")
+        st.subheader("Clustering — Unsupervised Learning")
         st.markdown(
-            "We removed the department labels entirely and let two algorithms "
-            "find structure on their own. The question: do natural groupings "
-            "align with the museum's official departments?"
+            "Department labels removed entirely. "
+            "Two algorithms find structure on their own — "
+            "do natural groupings match MoMA's departments?"
         )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        pill("Dimensionality Reduction")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**PCA — choosing how many components**")
-            img_or_warn("pca_variance", subdir="figures")
+        st.divider()
+        st.markdown("**Dimensionality reduction first**")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.caption("PCA variance — choosing n_components")
+            show_img("pca_variance")
             insight(
-                "50 PCA components capture 84.5% of variance — compact enough for fast clustering."
+                "50 components capture 84.5% of variance — compact enough for fast clustering."
             )
-        with col2:
-            st.markdown("**Elbow + Silhouette — choosing k**")
-            img_or_warn("elbow_silhouette", subdir="figures")
-            insight(
-                "We enforce k ≥ 3 to avoid trivial two-way splits. The best silhouette above that threshold determines k."
-            )
+        with c2:
+            st.caption("Elbow + Silhouette — choosing k")
+            show_img("elbow_silhouette")
+            insight("k ≥ 3 enforced to avoid trivial two-way splits.")
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        pill("KMeans Results")
-        col3, col4 = st.columns(2)
-        with col3:
-            img_or_warn("pca_—_kmeans_k=6", subdir="figures")
-        with col4:
-            img_or_warn("cluster_dept_breakdown", subdir="figures")
+        st.divider()
+        st.markdown("**KMeans results**")
+        c3, c4 = st.columns(2)
+        with c3:
+            show_img("pca_—_kmeans_k=6")
+        with c4:
+            show_img("cluster_dept_breakdown")
 
         insight(
-            "KMeans clusters partially but not perfectly align with departments. "
-            "Some clusters map cleanly to Photography or Architecture; "
-            "others are cross-departmental — grouping by era rather than medium. "
-            "That cross-departmental clustering is the interesting finding."
+            "KMeans clusters partially align with departments but not perfectly. "
+            "Some clusters map cleanly to Photography or Architecture. "
+            "Others are cross-departmental — grouping by era rather than medium. "
+            "That is the interesting finding unsupervised learning surfaces."
         )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        pill("DBSCAN Results")
-        col5, col6 = st.columns(2)
-        with col5:
-            img_or_warn("pca_—_dbscan", subdir="figures")
-        with col6:
+        st.divider()
+        st.markdown("**DBSCAN results**")
+        c5, c6 = st.columns(2)
+        with c5:
+            show_img("pca_—_dbscan")
+        with c6:
             st.markdown("**KMeans vs DBSCAN**")
-            comparison = pd.DataFrame(
+            cmp = pd.DataFrame(
                 {
                     "Property": [
                         "Assigns every point",
-                        "Finds noise",
-                        "Shape assumption",
-                        "Need to set k",
+                        "Detects noise/outliers",
+                        "Assumes cluster shape",
+                        "Requires k upfront",
                     ],
                     "KMeans": ["✅ Yes", "❌ No", "Spherical", "✅ Yes"],
                     "DBSCAN": ["❌ No", "✅ Yes", "Arbitrary", "❌ No"],
                 }
             )
-            st.dataframe(comparison, hide_index=True, use_container_width=True)
+            st.dataframe(cmp, hide_index=True, use_container_width=True)
             insight(
-                "DBSCAN labels ~X% of artworks as noise — "
-                "these are genuinely unusual, cross-disciplinary works that don't "
-                "fit any cluster. KMeans would have forcibly assigned them somewhere."
+                "DBSCAN labels outlier artworks as noise rather than forcing them into a cluster. "
+                "These are genuinely unusual, cross-disciplinary works — "
+                "KMeans would have distorted a cluster to accommodate them."
             )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        pill("t-SNE Visualisation")
-        img_or_warn("t-sne_—_kmeans_k=6", subdir="figures")
+        st.divider()
+        st.markdown("**t-SNE visualisation**")
+        show_img("t-sne_—_kmeans_k=6")
         insight(
             "t-SNE preserves local neighbourhood structure — points close together here "
-            "were genuinely similar in the original 110-dimensional space. "
+            "were genuinely similar in 110-dimensional space. "
             "The visible island structures confirm the clusters are real, not arbitrary."
         )
 
-    # ── Tab 5: Conclusions ────────────────────────────────────────────────────
+    # ── Conclusions ────────────────────────────────────────────────────────
     with tab5:
-        pill("Conclusions")
-        st.markdown("### What did we actually find?")
+        st.subheader("Conclusions")
 
         st.markdown("#### Finding 1 — Medium predicts department almost perfectly")
         st.markdown(
-            "The top feature importances are all medium terms. "
-            "'Gelatin silver' → Photography with 96% confidence. "
-            "'Oil on canvas' → Painting & Sculpture with 89% confidence. "
-            "The museum's departmental system is essentially a medium-based taxonomy — "
-            "our model discovered this automatically."
+            "Top feature importances are all medium terms. "
+            "'Gelatin silver' → Photography at 96% confidence. "
+            "The museum's departmental system is essentially a medium-based taxonomy. "
+            "Our model discovered this automatically — without being told."
         )
 
+        st.divider()
         st.markdown("#### Finding 2 — The hard cases are genuinely ambiguous")
         st.markdown(
-            "Architecture & Design and Drawings & Prints share media (graphite, paper, ink). "
-            "The model's mistakes cluster exactly here — and a human curator "
-            "looking at the same artwork would sometimes disagree too. "
-            "The confusion matrix maps the boundaries of human curatorial logic."
+            "Architecture & Design and Drawings & Prints share paper-based media. "
+            "The model's mistakes cluster exactly here. "
+            "A human curator looking at the same edge-case artwork would sometimes disagree too. "
+            "The confusion matrix maps the limits of the cataloguing system itself."
         )
 
+        st.divider()
         st.markdown(
-            "#### Finding 3 — Unsupervised clusters cut across departments by era"
+            "#### Finding 3 — Unsupervised clusters cross department lines by era"
         )
         st.markdown(
-            "KMeans found groups that don't follow department lines. "
+            "KMeans found groups that don't follow department boundaries. "
             "One cluster gathers 1960s–70s works across Photography, Drawing, and Architecture — "
-            "likely the Conceptual Art period, which resisted medium-based categorisation. "
-            "This is something the classification model can't surface."
+            "likely the Conceptual Art period, which deliberately resisted medium-based categorisation. "
+            "Classification cannot surface this. Clustering can."
         )
 
+        st.divider()
         st.markdown("#### Finding 4 — The collection encodes historical biases")
         st.markdown(
-            "85% male artists, heavy American/European skew. "
-            "Any classifier trained on this data will perpetuate these patterns. "
-            "A production deployment would need bias auditing — "
-            "accuracy on the test set does not mean fairness across demographics."
+            "85% male artists, heavy American and European skew. "
+            "A classifier trained on this data will perpetuate these patterns. "
+            "Accuracy on a test set drawn from the same distribution does not mean fairness."
         )
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        pill("Summary")
-        metric_cards(
+        st.divider()
+        st.subheader("Summary")
+        metric_row(
             [
-                ("94.8%", "RF Accuracy"),
-                ("0.86", "Macro F1"),
-                ("~96%", "Medium→Dept confidence"),
-                ("3", "DM techniques"),
+                ("94.8%", "RF Test Accuracy", ""),
+                ("0.86", "Macro F1", "Random Forest"),
+                ("~96%", "Medium→Dept confidence", "from feature importances"),
+                ("3", "DM techniques", "Classification · Clustering · PCA"),
             ]
         )
-
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.markdown(
-            '<p style="color:#888;font-size:0.85rem">'
+        st.divider()
+        st.caption(
             "Ahmed Sahigara · 230911180 · School of Computer Engineering · MIT Manipal"
-            "</p>",
-            unsafe_allow_html=True,
         )

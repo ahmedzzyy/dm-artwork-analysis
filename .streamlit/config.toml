@@ -1,0 +1,8 @@
+[theme]
+base = "light"
+
+primaryColor         = "#c8a951"     # gold — used for buttons, sliders, active elements
+backgroundColor      = "#fafaf8"     # warm off-white main area
+secondaryBackgroundColor = "#f0efea" # sidebar and input fields
+textColor            = "#1a1a1a"     # near-black — readable on both bg colors
+font                 = "serif"       # DM Serif feel without injecting fonts
