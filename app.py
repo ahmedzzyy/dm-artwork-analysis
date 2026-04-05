@@ -16,10 +16,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import numpy as np
 import pandas as pd
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 
-from src.config import OUTPUTS_DIR, MODELS_DIR
+from src.config import MODELS_DIR, OUTPUTS_DIR
 from src.predictor import TOP_NATIONALITIES
 
 # ── Page config ────────────────────────────────────────────────────────────
@@ -489,7 +489,7 @@ else:
         st.markdown("**KMeans results**")
         c3, c4 = st.columns(2)
         with c3:
-            show_img("pca_—_kmeans_k=6")
+            show_img("pca___kmeans_k_12")
         with c4:
             show_img("cluster_dept_breakdown")
 
@@ -504,7 +504,7 @@ else:
         st.markdown("**DBSCAN results**")
         c5, c6 = st.columns(2)
         with c5:
-            show_img("pca_—_dbscan")
+            show_img("pca___dbscan")
         with c6:
             st.markdown("**KMeans vs DBSCAN**")
             cmp = pd.DataFrame(
@@ -528,7 +528,7 @@ else:
 
         st.divider()
         st.markdown("**t-SNE visualisation**")
-        show_img("t-sne_—_kmeans_k=6")
+        show_img("t_sne___kmeans_k_12")
         insight(
             "t-SNE preserves local neighbourhood structure — points close together here "
             "were genuinely similar in 110-dimensional space. "
